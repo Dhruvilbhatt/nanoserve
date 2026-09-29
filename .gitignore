@@ -1,0 +1,13 @@
+# Project-local virtualenv (recreate from env.sh; never commit)
+.venv/
+
+__pycache__/
+*.py[cod]
+
+# HF model downloads, if any land in-tree
+models/
+*.safetensors
+
+# results/ is intentionally committed — those JSON/ncu files are the receipts.
+# Ignore only scratch runs:
+results/scratch/

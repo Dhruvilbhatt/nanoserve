@@ -1,0 +1,16 @@
+# Editable install is optional — env.sh puts the repo on PYTHONPATH already.
+# torch/triton come from /opt/pytorch (via the --system-site-packages venv) and
+# must NOT be resolved from PyPI, so they are not listed here.
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mini-serve"
+version = "0.1.0"
+description = "Minimal LLM serving engine used as a lab bench for kernel/scheduling experiments."
+requires-python = ">=3.10"
+dependencies = ["transformers", "accelerate"]
+
+[tool.setuptools]
+packages = ["engine"]
