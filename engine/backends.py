@@ -1,17 +1,16 @@
-"""Op-level backend selection — the seam where kernel experiments attach.
+"""Op-level backend selection — the seam where custom kernels would attach.
 
-Baseline: everything is "torch" (stock HuggingFace ops) and the engine runs the
-model unchanged. Experiment 4 (the hosted kernels, from the sibling gpu-kernels
-repo) will register custom attention / rmsnorm / gemm implementations here and
-have ModelRunner route the chosen ops to them — so swapping a kernel in is one
-config flag, not a fork of the model code.
+Today everything is "torch" (stock HuggingFace ops) and the engine runs the model
+unchanged. Custom attention / rmsnorm / gemm implementations could register here
+and have ModelRunner route the chosen ops to them, so swapping a kernel in is one
+config flag rather than a fork of the model code.
 
-Kept deliberately tiny until there is a real kernel to register; this exists now
-only to pin down the seam and fail loudly on a bad backend name.
+Kept deliberately tiny until there is a real kernel to register; for now it just
+pins down the seam and fails loudly on a bad backend name.
 """
 from __future__ import annotations
 
-# Add "triton" / "cuda" here once kernels/ is wired in (experiment 4).
+# Add "triton" / "cuda" here once custom kernels are wired in.
 KNOWN_BACKENDS = ("torch",)
 
 

@@ -1,10 +1,10 @@
-"""mini-serve engine — a minimal LLM serving engine used as a lab bench.
+"""nanoserve — a minimal LLM inference engine built from first principles.
 
 Public API:
 
     from engine import Engine, ModelConfig, SamplingParams
-    out = Engine(ModelConfig(model_id="Qwen/Qwen3-0.6B")).generate("Hello", SamplingParams(max_tokens=64))
-    print(out.text)
+    outs = Engine(ModelConfig(model_id="Qwen/Qwen3-0.6B")).generate(["Hello"], SamplingParams(max_tokens=64))
+    print(outs[0].text)
 """
 from __future__ import annotations
 

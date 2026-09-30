@@ -1,10 +1,9 @@
 """ModelRunner: loads one HF causal-LM + tokenizer and runs a single forward.
 
-This is the "torch-op baseline" (Rule 1 in the project doc): the forward pass is
-stock HuggingFace, so the engine stands up without any kernel work. Kernel
-experiments (experiment 4) attach at `backends.py` and route individual ops
-here — this class is the only place that touches the model, so that swap stays
-localized.
+This is the torch-op baseline: the forward pass is stock HuggingFace, so the
+engine is correct and simple before any optimization. Custom kernels would attach
+at `backends.py` and route individual ops here — this class is the only place
+that touches the model, so that swap stays localized.
 """
 from __future__ import annotations
 
@@ -18,7 +17,7 @@ from . import backends
 
 @dataclass
 class ModelConfig:
-    model_id: str = "Qwen/Qwen3-8B"   # the doc's target; override for smoke tests
+    model_id: str = "Qwen/Qwen3-8B"   # default model; override for smoke tests
     dtype: torch.dtype = torch.bfloat16
     device: str = "cuda"
     backend: str = "torch"            # see backends.py — only "torch" today

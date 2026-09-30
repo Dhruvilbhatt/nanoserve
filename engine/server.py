@@ -87,7 +87,7 @@ def _rng(params: SamplingParams, device: str) -> torch.Generator | None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="mini-serve engine")
+    ap = argparse.ArgumentParser(description="nanoserve engine")
     ap.add_argument("--model", default=ModelConfig.model_id)
     ap.add_argument("--prompt", required=True, action="append",
                     help="prompt to generate from; repeat --prompt to pass several")

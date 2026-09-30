@@ -1,42 +1,70 @@
 # nanoserve
 
-A **minimal LLM serving engine used as a lab bench** — not a product. See
-`../serving_engine_project.md` for the full rationale. The engine is never the
-deliverable; it's the harness that hosts a series of bounded, publishable
-experiments (kernels, scheduling, quantization, …), each producing one number
-and one lesson.
+A minimal LLM inference engine, built from first principles. It loads a single
+Hugging Face model and runs its **own** generation loop — tokenize, prefill, then
+decode one token at a time with a KV cache — instead of calling
+`model.generate()`. The point is to understand and optimize the serving path end
+to end: build the simplest correct version, measure it, find the bottleneck, fix
+it, and keep every number honest against a reference.
 
-**This repo currently contains experiment 0 only:** serve one model, greedy
-decode, correct vs HuggingFace. Everything else is a documented seam, not code.
+Everything is checked token-for-token against Hugging Face `generate()`, and
+every change is measured with the included benchmark + profiling tools.
+
+## What it does today
+
+- Single-request **and batched** generation (one padded forward for N prompts).
+- Greedy + temperature / top-k / top-p sampling.
+- KV-cache decode loop (HF `DynamicCache`).
+- Runs on CPU or CUDA.
+- Benchmark + `nsys` profiling harness, with committed result receipts.
+
+## Quickstart
+
+```bash
+# one-time: project-local venv that inherits torch/triton from /opt/pytorch
+/opt/pytorch/bin/python3 -m venv --system-site-packages .venv
+.venv/bin/pip install transformers accelerate matplotlib
+source env.sh
+
+# generate (use a small model to iterate fast)
+python -m engine --model Qwen/Qwen3-0.6B --prompt "The capital of France is" --max-tokens 32
+# multiple prompts: repeat --prompt
+python -m engine --model Qwen/Qwen3-0.6B \
+  --prompt "The capital of France is" --prompt "def fibonacci(n):" --max-tokens 24
+
+# benchmark + check a run against HF, writing a receipt to results/
+python bench/bench.py --label run --model Qwen/Qwen3-0.6B --out results/run.json --check-hf
+
+# batch-size sweep (throughput vs batch) + plot
+python bench/sweep.py --device cuda --out results/sweep_cuda.csv
+python bench/plot_sweep.py --csv results/sweep_cuda.csv --out results/sweep.png
+```
 
 ## Layout
 
 ```
 nanoserve/
-  engine/                # the harness (experiment 0)
-    model.py             #   ModelRunner: loads one HF model, one forward step (torch-op baseline)
-    kv_cache.py          #   KV cache factory (HF DynamicCache) — paged-KV seam (exp 2)
-    sampler.py           #   greedy + temperature/top-k/top-p
-    scheduler.py         #   Sequence lifecycle + FIFO admission — batching seam (exp 1)
-    backends.py          #   op-swap registry — kernel seam (exp 4)
-    server.py            #   Engine facade (prefill+decode loop) + CLI
-  eval/check_vs_hf.py    # correctness gate: engine greedy == HF, token-for-token
-  bench/bench_e2e.py     # end-to-end TTFT + decode tokens/sec (the anchor number)
-  autotune/              # exp F2 — placeholder, do not build before exp 4
-  results/               # committed receipts (JSON + raw ncu/nsys)
+  engine/
+    model.py        # ModelRunner: loads one HF model, one forward step (stock torch ops)
+    kv_cache.py     # KV cache factory (HF DynamicCache)
+    sampler.py      # greedy + temperature / top-k / top-p
+    scheduler.py    # Sequence lifecycle + request queue
+    backends.py     # op-backend selection (where custom kernels would attach)
+    server.py       # Engine (prefill + decode loop) + CLI
+  bench/
+    bench.py        # throughput + output-id receipts; correctness vs HF
+    sweep.py        # throughput vs batch size, per device
+    plot_sweep.py   # the throughput-vs-batch plot
+    profile_step.py # nsys driver for one decode region
+  results/          # committed receipts: CSV/JSON numbers + the sweep plot
 ```
-
-`kernels/` from the doc's layout is **not duplicated here** — it's the sibling
-`../gpu-kernels/` repo (with the `gpubench` harness). It gets wired in at
-`engine/backends.py` swap points during experiment 4; until then the engine runs
-stock HF ops.
 
 ## How it works (end to end)
 
 Text generation is just this loop: **turn text into token ids → run the model to
 get scores for the next token → pick one → feed it back → repeat.** The engine's
-whole job is to run that loop correctly and to leave clean seams where later
-experiments make it faster. Below we trace one real call through the code.
+whole job is to run that loop correctly and to leave clean seams where
+optimizations plug in. Below we trace one real request through the code.
 
 ### The pieces and who owns what
 
@@ -48,24 +76,24 @@ tokenizer) and a `Scheduler` (the request queue). The decode loop lives in
 ```mermaid
 flowchart TB
     subgraph E["Engine — server.py (the facade)"]
-        SC["Scheduler — scheduler.py<br/>FIFO queue of Sequence objects"]
+        SC["Scheduler — scheduler.py<br/>request queue of Sequence objects"]
         RL["_run_to_completion()<br/>the prefill + decode loop"]
     end
 
     RL -->|"pick next token"| SA["sampler.py — sample()<br/>greedy / top-k / top-p"]
-    RL -->|"fresh cache per sequence"| KV["kv_cache.py — new_cache()<br/>HF DynamicCache"]
+    RL -->|"KV cache"| KV["kv_cache.py — new_cache()<br/>HF DynamicCache"]
     RL -->|"one forward step"| MR["ModelRunner — model.py"]
 
     MR --> TOK["tokenizer<br/>encode() / decode()"]
-    MR --> HFM["HF model forward<br/>(stock torch ops = the baseline)"]
-    MR -.->|"validated by"| BK["backends.py<br/>('torch' only, for now)"]
+    MR --> HFM["HF model forward<br/>(stock torch ops)"]
+    MR -.->|"validated by"| BK["backends.py<br/>('torch' for now)"]
 ```
 
-### One `generate()` call, start to finish
+### One request, start to finish
 
-Using our example prompt `"The capital of France is"`. The tokenizer turns it
-into **5 token ids** `[785, 6722, 315, 9625, 374]`, the model generates one token
-at a time, and the tokenizer turns the result back into text
+Using the prompt `"The capital of France is"`. The tokenizer turns it into **5
+token ids** `[785, 6722, 315, 9625, 374]`, the model generates one token at a
+time, and the tokenizer turns the result back into text
 (`" Paris. The capital of France"`).
 
 ```mermaid
@@ -73,14 +101,12 @@ sequenceDiagram
     autonumber
     participant U as Caller / CLI
     participant EN as Engine
-    participant SC as Scheduler
     participant MR as ModelRunner
     participant SA as sample()
 
     U->>EN: generate("The capital of France is", params)
     EN->>MR: encode(prompt)
     MR-->>EN: [785, 6722, 315, 9625, 374]
-    EN->>SC: add(Sequence)
     EN->>EN: _run_to_completion(seq)
 
     Note over EN,MR: PREFILL — one pass over all 5 prompt tokens
@@ -103,18 +129,17 @@ sequenceDiagram
 
 ### The two phases: prefill vs decode
 
-There are two distinct phases, and they behave very differently — which is why
-the benchmark reports them separately (TTFT vs decode tokens/sec).
+Two distinct phases that behave very differently — which is why the benchmark
+reports them separately (TTFT vs decode tokens/sec).
 
 - **Prefill** runs the model over the **whole prompt at once** (`input_ids` shape
-  `[1, 5]`). This is one big batched matmul, compute-bound, and it produces the
-  logits for the *first* generated token. Its latency is **TTFT** (time to first
-  token).
+  `[1, 5]`). One big batched matmul, compute-bound; it produces the logits for the
+  *first* generated token. Its latency is **TTFT** (time to first token).
 - **Decode** then runs the model **one token at a time** (`input_ids` shape
-  `[1, 1]`). Each step attends to the growing KV cache but only does a sliver of
+  `[1, 1]`). Each step attends to the growing KV cache but does only a sliver of
   new compute.
 
-The exact trace for our example (real ids from the run):
+The exact trace for the example (real ids from a run):
 
 | step | phase  | `forward` input | cache len (before→after) | argmax id | piece        |
 |-----:|--------|-----------------|--------------------------|-----------|--------------|
@@ -133,9 +158,9 @@ one row per step.
 
 ### The decode loop itself
 
-This is the heart of `_run_to_completion`. Prefill produces the first
-`next_logits`; the loop then samples, checks for a stop token, and only calls
-`forward` again if it needs another token:
+The heart of `_run_to_completion`: prefill produces the first `next_logits`; the
+loop then samples, checks for a stop token, and only calls `forward` again if it
+needs another token.
 
 ```mermaid
 flowchart LR
@@ -148,68 +173,44 @@ flowchart LR
     C -.->|"max_tokens reached"| LEN["finish('length')"]
 ```
 
-**Why decode is slow in this baseline (and why that's expected):** each step does
-tiny GPU work but pays fixed overheads — a Python loop iteration, a kernel launch
-per layer, and a device→host sync when `argmax` becomes a Python `int`. On
-Qwen3-0.6B our `bench_e2e.py` measures ~**34 tokens/s (~29 ms/token)**: the GPU is
-mostly idle, waiting on the CPU. That is the honest anchor number later
-experiments move.
+## Making it fast: build → measure → fix
 
-### Where the experiments plug in
+The naive per-token decode loop is **host-overhead-bound, not compute-bound.**
+Profiling one batch-1 decode step with `nsys` (Qwen3-0.6B) shows it directly:
 
-The loop above never changes — each experiment swaps exactly one seam:
+- GPU utilization **7.4%** — idle **92.6%** of the wall time
+- **~1,725 kernel launches per token**
 
-| Seam (file)            | Baseline today                | The experiment that replaces it            |
-|------------------------|-------------------------------|--------------------------------------------|
-| `scheduler.py`         | FIFO, one sequence at a time  | **exp 1** continuous batching: batch the `forward` across many sequences, hiding per-step overhead |
-| `kv_cache.py`          | one `DynamicCache` per seq    | **exp 2** paged KV: fixed-size blocks from a shared pool |
-| `backends.py`          | `'torch'` (stock HF ops)      | **exp 4** route attention/rmsnorm to the `gpu-kernels` CUDA/Triton kernels |
-| the decode loop (CPU)  | Python                        | **exp 5** move the hot control-plane loop to Rust |
+The GPU finishes its tiny matmul almost instantly, then waits for the Python loop
+to issue the next step's launches.
 
-## Setup
+**The first fix is batching** — run N sequences in one padded forward, amortizing
+that fixed per-step overhead across all of them. Output stays token-for-token
+identical to the single-request path and to HF, except where a bf16 near-tie
+flips a greedy `argmax` (batched matmuls reduce in a different order, so a tie can
+resolve differently — a numerical detail, not a logic difference).
 
-The engine runs in a project-local venv (`--system-site-packages` off
-`/opt/pytorch`, adds `transformers` without touching that shared env):
+Sweeping batch size makes the payoff concrete:
 
-```bash
-/opt/pytorch/bin/python3 -m venv --system-site-packages .venv
-.venv/bin/pip install transformers accelerate
-source env.sh
-```
+![Throughput vs batch size](results/sweep.png)
 
-## Run
+- **GPU** throughput scales ~linearly, **36 → 3,737 tok/s** (batch 1 → 256), while
+  batch latency stays roughly flat.
+- **CPU** plateaus around **315 tok/s** and its latency climbs with batch.
+- Below batch ~16 the CPU is actually *faster* — at tiny batch the GPU is starved
+  by launch overhead, exactly the effect the `nsys` profile shows.
 
-```bash
-source env.sh
+That per-step host overhead is the next thing to attack (e.g. CUDA graphs,
+`torch.compile`, or moving the hot control-plane loop to a compiled language).
 
-# Generate (defaults to Qwen/Qwen3-8B; use a small model to iterate fast):
-python -m engine --model Qwen/Qwen3-0.6B --prompt "The capital of France is" --max-tokens 32
+## Design principles
 
-# Multiple prompts — repeat --prompt (baseline runs them sequentially, no batching yet):
-python -m engine --model Qwen/Qwen3-0.6B \
-  --prompt "The capital of France is" --prompt "def fibonacci(n):" --max-tokens 24
-
-# Correctness gate (must pass before trusting any perf number):
-python eval/check_vs_hf.py --model Qwen/Qwen3-0.6B
-
-# End-to-end throughput:
-python bench/bench_e2e.py --model Qwen/Qwen3-0.6B --prompt-len 512 --max-tokens 128
-```
-
-## Design rules (from the project doc)
-
-1. **Baseline uses torch/HF ops**, so it stands up without kernel work. Each
-   kernel experiment replaces *one* op and measures the delta.
-2. **Correctness first**, checked against HF `generate()` every change.
-3. **One model, one hardware target.** Default target is `Qwen/Qwen3-8B`;
+1. **Stock torch/HF ops for the forward pass** — the engine is correct and simple
+   before any optimization; changes are layered on top and measured against it.
+2. **Correctness first** — every change is checked token-for-token against HF
+   `generate()` before any performance number is trusted.
+3. **One model, one hardware target** at a time. Default `Qwen/Qwen3-8B`;
    `Qwen/Qwen3-0.6B` (same family) is the fast smoke-test model.
-4. Experiments live *around* this baseline and each ships independently. The
-   seams (scheduler / kv_cache / backends) exist so an experiment changes one
-   file, not the whole engine.
-
-### Torch version note
-
-The venv's torch (currently 2.14.0+cu130, pulled by `accelerate` — it grabs the
-latest on each install) is newer than `gpu-kernels`' /opt/pytorch torch
-(2.9.1+cu130). Harmless now (HF ops only); pin the deps if you want
-reproducibility, and reconcile before wiring in the JIT kernels at experiment 4.
+4. **Localized seams** — the scheduler, KV cache, and op-backend are separate, so
+   a change (batching, a paged cache, custom kernels, a compiled control plane)
+   touches one file, not the whole engine.

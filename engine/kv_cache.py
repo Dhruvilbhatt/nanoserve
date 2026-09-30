@@ -1,9 +1,9 @@
 """KV cache — baseline delegates to HF's DynamicCache.
 
 DynamicCache is a contiguous, per-sequence cache that grows one token per decode
-step. That is the correct, unremarkable baseline. Experiment 2 (paged KV) will
-replace this factory with a cache that allocates fixed-size blocks from a shared
-pool so many sequences share memory without per-sequence over-allocation.
+step. That is the correct, unremarkable baseline. A paged KV cache would replace
+this factory with one that allocates fixed-size blocks from a shared pool, so
+many sequences share memory without per-sequence over-allocation.
 
 The whole seam is this one factory: the engine only ever calls `new_cache()`, so
 the paged version slots in without touching the decode loop.

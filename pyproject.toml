@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "nanoserve"
 version = "0.1.0"
-description = "Minimal LLM serving engine used as a lab bench for kernel/scheduling experiments."
+description = "Minimal LLM inference engine built from first principles."
 requires-python = ">=3.10"
 dependencies = ["transformers", "accelerate"]
 

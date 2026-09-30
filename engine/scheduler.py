@@ -1,13 +1,9 @@
-"""Request lifecycle + admission.
+"""Request lifecycle types + a FIFO request queue.
 
-For experiment 0 the scheduler is intentionally trivial: a FIFO queue that hands
-the engine one sequence at a time to run to completion. That is the honest
-baseline — no batching yet.
-
-Experiment 1 (continuous batching) is *this file's* job: admit up to N
-sequences, form a batch each decode step from whichever are active, and evict
-finished ones to admit waiting ones — all without the engine's decode step or
-the model needing to change. Keeping the batch policy isolated here is the point.
+`Sequence` holds the mutable state of one generation request; `Scheduler` is a
+plain FIFO of pending sequences. Admission and eviction policy — e.g. continuous
+batching, where a finished sequence frees a slot for a waiting one — belongs here,
+so it can evolve without the model or the decode step changing.
 """
 from __future__ import annotations
 

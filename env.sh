@@ -4,11 +4,9 @@
 # so it inherits torch/triton from /opt/pytorch but adds `transformers` in
 # isolation, without mutating that shared environment.
 #
-# NOTE: pip pulls a newer torch (currently 2.14.0+cu130; it grabs the latest on
-# each install) into the venv than the gpu-kernels repo uses (/opt/pytorch's
-# 2.9.1+cu130). Fine for this engine (stock HF ops, no custom CUDA compilation);
-# pin torch/transformers/accelerate if you need reproducibility. Only needs
-# reconciling at experiment 4, when the gpu-kernels JIT kernels get wired in.
+# NOTE: pip pulls the latest torch (currently 2.14.0+cu130) into the venv on each
+# install. Fine for this engine (stock HF ops, no custom CUDA compilation); pin
+# torch/transformers/accelerate if you need reproducibility.
 
 _MS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
