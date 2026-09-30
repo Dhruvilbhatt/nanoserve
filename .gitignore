@@ -11,3 +11,9 @@ models/
 # results/ is intentionally committed — those JSON/ncu files are the receipts.
 # Ignore only scratch runs:
 results/scratch/
+
+# local scratch + regenerable profiler binaries (keep .png/.csv/.json receipts)
+sandbox.py
+*.nsys-rep
+*.sqlite
+*.qdstrm

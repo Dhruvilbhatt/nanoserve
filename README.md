@@ -1,4 +1,4 @@
-# mini-serve
+# nanoserve
 
 A **minimal LLM serving engine used as a lab bench** — not a product. See
 `../serving_engine_project.md` for the full rationale. The engine is never the
@@ -12,7 +12,7 @@ decode, correct vs HuggingFace. Everything else is a documented seam, not code.
 ## Layout
 
 ```
-mini-serve/
+nanoserve/
   engine/                # the harness (experiment 0)
     model.py             #   ModelRunner: loads one HF model, one forward step (torch-op baseline)
     kv_cache.py          #   KV cache factory (HF DynamicCache) — paged-KV seam (exp 2)

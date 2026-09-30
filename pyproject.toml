@@ -6,7 +6,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mini-serve"
+name = "nanoserve"
 version = "0.1.0"
 description = "Minimal LLM serving engine used as a lab bench for kernel/scheduling experiments."
 requires-python = ">=3.10"

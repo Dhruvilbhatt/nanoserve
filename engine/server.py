@@ -61,7 +61,7 @@ class Engine:
             generated_tokens.append(token)
 
             input_ids = torch.cat([token], dim=1)
-            new_attention_mask = torch.ones((input_ids.shape[0], 1), dtype=attention_mask.dtype)
+            new_attention_mask = torch.ones((input_ids.shape[0], 1), dtype=attention_mask.dtype, device=attention_mask.device)
             attention_mask = torch.cat([attention_mask, new_attention_mask], dim=1)
             if token in self.model.eos_token_ids:
                 seq.finish("stop")

@@ -33,8 +33,8 @@ class ModelRunner:
         self.tokenizer.padding_side = "left"
         self.model = (
             AutoModelForCausalLM.from_pretrained(config.model_id, dtype=config.dtype)
-            # .to(config.device)
-            # .eval()
+            .to(config.device)
+            .eval()
         )
         self.eos_token_ids = self._resolve_eos()
 
@@ -47,7 +47,7 @@ class ModelRunner:
         return {eos} if isinstance(eos, int) else set(eos)
 
     def encode(self, text: list[str]) -> list[list[int]]:
-        return self.tokenizer(text, padding=True, truncation=True, return_tensors="pt")
+        return self.tokenizer(text, padding=True, truncation=True, return_tensors="pt").to(self.config.device)
 
     def decode(self, token_ids: list[torch.Tensor]) -> str:
         return self.tokenizer.batch_decode(token_ids, skip_special_tokens=True)

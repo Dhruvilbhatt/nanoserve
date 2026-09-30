@@ -1,6 +1,6 @@
 # Source this before working: `source env.sh`
 #
-# mini-serve uses a project-local venv (.venv) created with --system-site-packages
+# nanoserve uses a project-local venv (.venv) created with --system-site-packages
 # so it inherits torch/triton from /opt/pytorch but adds `transformers` in
 # isolation, without mutating that shared environment.
 #
@@ -22,7 +22,7 @@ fi
 source "$_MS_ROOT/.venv/bin/activate"
 export PYTHONPATH="$_MS_ROOT:$PYTHONPATH"   # so `import engine` works from eval/ and bench/
 
-echo "mini-serve env ready:"
+echo "nanoserve env ready:"
 echo "  python : $(command -v python)"
 python - <<'PY'
 import torch, transformers
